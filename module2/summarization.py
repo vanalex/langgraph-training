@@ -4,6 +4,8 @@ from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.constants import END, START
 from langgraph.graph import MessagesState, StateGraph
+import asyncio
+from mcp_client_utils import mcp_client_context, get_current_session
 
 load_dotenv()
 
@@ -12,14 +14,17 @@ model = ChatOpenAI(model="gpt-5-mini",temperature=0)
 class State(MessagesState):
     summary: str
 
-def call_model(state: State):
+async def call_model(state: State):
     summary = state.get("summary", "")
 
     # If there is summary, then we add it
     if summary:
-
+        client = get_current_session()
+        result = await client.get_prompt("conversation-summary-system-prompt", arguments={"summary": summary})
+        system_message_content = result.messages[0].content.text
+             
         # Add summary to system message
-        system_message = f"Summary of conversation earlier: {summary}"
+        system_message = system_message_content
 
         # Append summary to any newer messages
         messages = [SystemMessage(content=system_message)] + state["messages"]
@@ -27,29 +32,28 @@ def call_model(state: State):
     else:
         messages = state["messages"]
 
-    response = model.invoke(messages)
+    response = await model.ainvoke(messages)
     return {"messages": response}
 
 
-def summarize_conversation(state: State):
+async def summarize_conversation(state: State):
     # First, we get any existing summary
     summary = state.get("summary", "")
 
     # Create our summarization prompt
     if summary:
-
-        # A summary already exists
-        summary_message = (
-            f"This is summary of the conversation to date: {summary}\n\n"
-            "Extend the summary by taking into account the new messages above:"
-        )
+        client = get_current_session()
+        result = await client.get_prompt("update-summary-prompt", arguments={"summary": summary})
+        summary_message = result.messages[0].content.text
 
     else:
-        summary_message = "Create a summary of the conversation above:"
+        client = get_current_session()
+        result = await client.get_prompt("create-summary-prompt")
+        summary_message = result.messages[0].content.text
 
     # Add prompt to our history
     messages = state["messages"] + [HumanMessage(content=summary_message)]
-    response = model.invoke(messages)
+    response = await model.ainvoke(messages)
 
     # Delete all but the 2 most recent messages
     delete_messages = [RemoveMessage(id=m.id) for m in state["messages"][:-2]]
@@ -84,25 +88,30 @@ graph = workflow.compile(checkpointer=memory)
 
 config = {"configurable": {"thread_id": "1"}}
 
-# Start conversation
-input_message = HumanMessage(content="hi! I'm Lance")
-output = graph.invoke({"messages": [input_message]}, config)
-for m in output['messages'][-1:]:
-    m.pretty_print()
+async def main():
+    async with mcp_client_context():
+        # Start conversation
+        input_message = HumanMessage(content="hi! I'm Lance")
+        output = await graph.ainvoke({"messages": [input_message]}, config)
+        for m in output['messages'][-1:]:
+            m.pretty_print()
 
-input_message = HumanMessage(content="what's my name?")
-output = graph.invoke({"messages": [input_message]}, config)
-for m in output['messages'][-1:]:
-    m.pretty_print()
+        input_message = HumanMessage(content="what's my name?")
+        output = await graph.ainvoke({"messages": [input_message]}, config)
+        for m in output['messages'][-1:]:
+            m.pretty_print()
 
-input_message = HumanMessage(content="i like the 49ers!")
-output = graph.invoke({"messages": [input_message]}, config)
-for m in output['messages'][-1:]:
-    m.pretty_print()
+        input_message = HumanMessage(content="i like the 49ers!")
+        output = await graph.ainvoke({"messages": [input_message]}, config)
+        for m in output['messages'][-1:]:
+            m.pretty_print()
 
-summary = graph.get_state(config).values.get("summary","")
+        summary = (await graph.aget_state(config)).values.get("summary","")
 
-input_message = HumanMessage(content="i like Nick Bosa, isn't he the highest paid defensive player?")
-output = graph.invoke({"messages": [input_message]}, config)
-for m in output['messages'][-1:]:
-    m.pretty_print()
+        input_message = HumanMessage(content="i like Nick Bosa, isn't he the highest paid defensive player?")
+        output = await graph.ainvoke({"messages": [input_message]}, config)
+        for m in output['messages'][-1:]:
+            m.pretty_print()
+
+if __name__ == "__main__":
+    asyncio.run(main())

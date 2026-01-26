@@ -12,6 +12,8 @@ from langchain_openai import ChatOpenAI
 from langgraph.constants import START
 from langgraph.graph import MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
+import asyncio
+from mcp_client_utils import mcp_client_context, get_current_session
 
 load_dotenv()
 
@@ -68,6 +70,7 @@ SYSTEM_MESSAGE = SystemMessage(
 )
 
 
+
 def create_assistant_node(llm_with_tools):
     """Create an assistant node function.
 
@@ -77,7 +80,7 @@ def create_assistant_node(llm_with_tools):
     Returns:
         Assistant node function
     """
-    def assistant(state: MessagesState) -> dict:
+    async def assistant(state: MessagesState) -> dict:
         """Process messages and invoke LLM with tools.
 
         Args:
@@ -86,8 +89,14 @@ def create_assistant_node(llm_with_tools):
         Returns:
             Dictionary with updated messages
         """
-        messages = [SYSTEM_MESSAGE] + state["messages"]
-        response = llm_with_tools.invoke(messages)
+        # Use the shared session
+        client = get_current_session()
+        result = await client.get_prompt("arithmetic-agent-system-prompt")
+        prompt_content = result.messages[0].content.text
+            
+        system_message = SystemMessage(content=prompt_content)
+        messages = [system_message] + state["messages"]
+        response = await llm_with_tools.ainvoke(messages)
         return {"messages": [response]}
 
     return assistant
@@ -120,7 +129,7 @@ def build_agent_graph() -> StateGraph:
     return builder.compile()
 
 
-def run_agent(graph: StateGraph, user_input: str) -> List[BaseMessage]:
+async def run_agent(graph: StateGraph, user_input: str) -> List[BaseMessage]:
     """Run the agent with a user input.
 
     Args:
@@ -131,23 +140,24 @@ def run_agent(graph: StateGraph, user_input: str) -> List[BaseMessage]:
         List of messages from the conversation
     """
     messages = [HumanMessage(content=user_input)]
-    result = graph.invoke({"messages": messages})
+    result = await graph.ainvoke({"messages": messages})
     return result["messages"]
 
 
-def main():
+async def main():
     """Main execution function."""
     # Build the agent graph
-    agent_graph = build_agent_graph()
+    async with mcp_client_context():
+        agent_graph = build_agent_graph()
 
-    # Example query
-    query = "Add 3 and 4. Multiply the output by 2. Divide the output by 5"
-    messages = run_agent(agent_graph, query)
+        # Example query
+        query = "Add 3 and 4. Multiply the output by 2. Divide the output by 5"
+        messages = await run_agent(agent_graph, query)
 
-    # Print results
-    for message in messages:
-        message.pretty_print()
+        # Print results
+        for message in messages:
+            message.pretty_print()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
