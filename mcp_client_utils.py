@@ -4,7 +4,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 # Get the absolute path to the server file
-SERVER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "my_mcp_server.py")
+SERVER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_server.py")
 
 _CURRENT_SESSION: ClientSession | None = None
 
