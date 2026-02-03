@@ -13,4 +13,5 @@ dependencies = [
     "langgraph-checkpoint-sqlite>=3.0.3",
     "langsmith>=0.5.2",
     "fastmcp",
+    "langchain-community>=0.4.1",
 ]

@@ -14,7 +14,7 @@ from langgraph.constants import START
 from langgraph.graph import MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 import asyncio
-from mcp_client_utils import mcp_client_context, get_current_session
+from mcp_server.mcp_client_utils import mcp_client_context, get_current_session
 
 load_dotenv()
 
