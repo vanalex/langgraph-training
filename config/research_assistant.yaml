@@ -1,0 +1,40 @@
+# Research Assistant Agent Configuration
+
+name: research_assistant
+version: 1.0.0
+description: Multi-agent system for automated research and report generation
+
+# LLM Configuration
+llm_model: gpt-4o
+llm_temperature: 0.0
+llm_max_tokens: null
+
+# MCP Configuration
+mcp_enabled: true
+mcp_server_url: http://localhost:8000/sse
+
+# Search Configuration
+search_enabled: true
+search_max_results: 3
+
+# Graph Configuration
+max_iterations: 20
+interrupt_before:
+  - human_feedback
+interrupt_after: []
+
+# Runtime Configuration
+timeout: 600
+retry_attempts: 3
+enable_checkpointing: true
+
+# Environment Configuration
+langsmith_tracing: true
+langsmith_project: langgraph-training
+
+# Research-specific Metadata
+metadata:
+  max_analysts: 3
+  max_interview_turns: 2
+  report_format: markdown
+  default_topic: "AI in Healthcare"
