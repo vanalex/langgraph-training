@@ -14,4 +14,5 @@ dependencies = [
     "langsmith>=0.5.2",
     "fastmcp",
     "langchain-community>=0.4.1",
+    "langchain-mcp-adapters>=0.2.1",
 ]

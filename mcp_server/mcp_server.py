@@ -227,4 +227,4 @@ For your conclusion, use ## Conclusion as the section header.
 Here are the sections to reflect on for writing: {formatted_str_sections}"""
 
 if __name__ == "__main__":
-    mcp.run()
+    mcp.run(transport="streamable-http")

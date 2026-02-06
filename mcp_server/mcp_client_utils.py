@@ -1,41 +1,42 @@
 from contextlib import asynccontextmanager
 import os
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from fastmcp import MultiServerMCPClient
 
-# Get the absolute path to the server file
-SERVER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_server.py")
+# MCP server HTTP URL
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp")
 
-_CURRENT_SESSION: ClientSession | None = None
+_CURRENT_CLIENT: MultiServerMCPClient | None = None
 
 @asynccontextmanager
 async def mcp_client_context():
-    """Context manager that maintains a single MCP session for the duration of the context."""
-    global _CURRENT_SESSION
-    server_params = StdioServerParameters(
-        command="uv",
-        args=["run", SERVER_PATH],
-        env=os.environ.copy()
-    )
-    
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            _CURRENT_SESSION = session
-            try:
-                yield session
-            finally:
-                _CURRENT_SESSION = None
+    """Context manager that maintains a single MCP client for the duration of the context."""
+    global _CURRENT_CLIENT
 
-def get_current_session() -> ClientSession:
-    """Get the currently active MCP session."""
-    if _CURRENT_SESSION is None:
-        raise RuntimeError("No active MCP session. Ensure code is running within an 'mcp_client_context' block.")
-    return _CURRENT_SESSION
+    client = MultiServerMCPClient(
+        {
+            "prompts": {
+                "transport": "http",
+                "url": MCP_SERVER_URL,
+            }
+        }
+    )
+
+    async with client:
+        _CURRENT_CLIENT = client
+        try:
+            yield client
+        finally:
+            _CURRENT_CLIENT = None
+
+def get_current_session() -> MultiServerMCPClient:
+    """Get the currently active MCP client."""
+    if _CURRENT_CLIENT is None:
+        raise RuntimeError("No active MCP client. Ensure code is running within an 'mcp_client_context' block.")
+    return _CURRENT_CLIENT
 
 # Backwards compatibility for now, though we'll remove usage of this in refactor
 @asynccontextmanager
 async def get_mcp_client():
     """Deprecated: Use mcp_client_context for long-lived sessions."""
-    async with mcp_client_context() as session:
-        yield session
+    async with mcp_client_context() as client:
+        yield client
