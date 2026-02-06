@@ -69,7 +69,7 @@ class TestBaseAgent:
     def test_init_with_context(self):
         """Test initialization with config and context."""
         config = AgentConfig(name="test_agent")
-        llm = ChatOpenAI(model="gpt-4o")
+        llm = Mock(spec=ChatOpenAI)
         context = AgentContext(llm=llm, config=config)
 
         agent = TestAgent(config, context)
@@ -87,25 +87,36 @@ class TestBaseAgent:
         )
         agent = TestAgent(config)
 
-        agent.initialize_llm()
+        with patch('core.agents.base_agent.ChatOpenAI') as mock_openai:
+            mock_llm = Mock()
+            mock_llm.model_name = "gpt-4o-mini"
+            mock_llm.temperature = 0.5
+            mock_openai.return_value = mock_llm
 
-        assert agent.context.llm is not None
-        assert isinstance(agent.context.llm, ChatOpenAI)
-        assert agent.context.llm.model_name == "gpt-4o-mini"
-        assert agent.context.llm.temperature == 0.5
+            agent.initialize_llm()
+
+            assert agent.context.llm is not None
+            assert agent.context.llm == mock_llm
+            mock_openai.assert_called_once_with(model="gpt-4o-mini", temperature=0.5)
 
     def test_initialize_llm_idempotent(self):
         """Test LLM initialization is idempotent."""
         config = AgentConfig(name="test_agent")
         agent = TestAgent(config)
 
-        agent.initialize_llm()
-        llm1 = agent.context.llm
+        with patch('core.agents.base_agent.ChatOpenAI') as mock_openai:
+            mock_llm = Mock()
+            mock_openai.return_value = mock_llm
 
-        agent.initialize_llm()
-        llm2 = agent.context.llm
+            agent.initialize_llm()
+            llm1 = agent.context.llm
 
-        assert llm1 is llm2
+            agent.initialize_llm()
+            llm2 = agent.context.llm
+
+            assert llm1 is llm2
+            # Should only be called once due to idempotency
+            mock_openai.assert_called_once()
 
     def test_compile_graph(self):
         """Test graph compilation."""
@@ -250,7 +261,7 @@ class TestAgentContext:
     def test_context_with_llm(self):
         """Test AgentContext with LLM."""
         config = AgentConfig(name="test_agent")
-        llm = ChatOpenAI(model="gpt-4o")
+        llm = Mock(spec=ChatOpenAI)
         context = AgentContext(llm=llm, config=config)
 
         assert context.llm == llm

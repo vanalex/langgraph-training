@@ -9,6 +9,9 @@ from typing import AsyncGenerator
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Set dummy API keys for tests to avoid OpenAI errors
+os.environ.setdefault("OPENAI_API_KEY", "sk-test-dummy-key-for-testing")
+
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from mcp import GetPromptResult

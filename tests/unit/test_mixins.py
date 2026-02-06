@@ -135,7 +135,7 @@ class TestLLMMixin:
     def test_get_llm_existing(self):
         """Test getting existing LLM."""
         config = AgentConfig(llm_model="gpt-4o")
-        llm = ChatOpenAI(model="gpt-4o")
+        llm = Mock(spec=ChatOpenAI)
         context = AgentContext(config=config, llm=llm)
         agent = TestLLMAgent(context)
 
@@ -153,6 +153,7 @@ class TestLLMMixin:
 
         assert result is not None
         assert isinstance(result, ChatOpenAI)
+        assert result.model_name == "gpt-4o"
 
     @pytest.mark.asyncio
     async def test_generate(self):
