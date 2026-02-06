@@ -242,8 +242,10 @@ class TestErrorHandlingE2E:
 
         monkeypatch.setattr(mcp_client_utils, "_CURRENT_CLIENT", mock_mcp_client)
 
-        # Mock LLM to raise error
-        mock_llm.ainvoke = AsyncMock(side_effect=Exception("LLM Error"))
+        # Mock LLM to raise error - need to mock the structured output too
+        structured_mock = Mock()
+        structured_mock.ainvoke = AsyncMock(side_effect=Exception("LLM Error"))
+        mock_llm.with_structured_output = Mock(return_value=structured_mock)
 
         state = {
             "topic": "AI",

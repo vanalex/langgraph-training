@@ -17,22 +17,38 @@ class TestMCPClientIntegration:
     async def test_mcp_client_context_manager(self, monkeypatch):
         """Test MCP client context manager lifecycle."""
         from mcp_server import mcp_client_utils
-        from fastmcp import MultiServerMCPClient
+        from mcp import ClientSession
 
-        # Mock the MultiServerMCPClient
-        mock_client = AsyncMock(spec=MultiServerMCPClient)
+        # Mock the sse_client and ClientSession
+        mock_session = AsyncMock(spec=ClientSession)
+        mock_session.initialize = AsyncMock()
 
-        # Mock __aenter__ and __aexit__
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
+        class MockStreamPair:
+            async def __aenter__(self):
+                return (None, None)  # read, write streams
+            async def __aexit__(self, *args):
+                pass
 
-        with patch('mcp_server.mcp_client_utils.MultiServerMCPClient', return_value=mock_client):
-            async with mcp_client_utils.mcp_client_context() as client:
-                assert client is not None
-                assert mcp_client_utils._CURRENT_CLIENT == client
+        class MockSession:
+            async def __aenter__(self):
+                return mock_session
+            async def __aexit__(self, *args):
+                pass
 
-            # After exiting context, should be None
-            assert mcp_client_utils._CURRENT_CLIENT is None
+        def mock_sse_client(url):
+            return MockStreamPair()
+
+        def mock_client_session(read, write):
+            return MockSession()
+
+        with patch('mcp_server.mcp_client_utils.sse_client', mock_sse_client):
+            with patch('mcp_server.mcp_client_utils.ClientSession', mock_client_session):
+                async with mcp_client_utils.mcp_client_context() as client:
+                    assert client is not None
+                    assert mcp_client_utils._CURRENT_CLIENT == client
+
+                # After exiting context, should be None
+                assert mcp_client_utils._CURRENT_CLIENT is None
 
     async def test_get_current_session_with_active_client(self, mock_mcp_client, monkeypatch):
         """Test get_current_session returns active client."""
@@ -58,7 +74,7 @@ class TestMCPClientIntegration:
         from mcp_server import mcp_client_utils
 
         # Set custom URL
-        test_url = "http://testserver:9000/mcp"
+        test_url = "http://testserver:9000/sse"
         monkeypatch.setenv("MCP_SERVER_URL", test_url)
 
         # Need to reload module to pick up env var
@@ -68,19 +84,6 @@ class TestMCPClientIntegration:
         # Verify URL was updated
         assert mcp_client_utils.MCP_SERVER_URL == test_url
 
-    async def test_get_mcp_client_deprecated(self, monkeypatch):
-        """Test deprecated get_mcp_client function."""
-        from mcp_server import mcp_client_utils
-        from fastmcp import MultiServerMCPClient
-
-        mock_client = AsyncMock(spec=MultiServerMCPClient)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-
-        with patch('mcp_server.mcp_client_utils.MultiServerMCPClient', return_value=mock_client):
-            async with mcp_client_utils.get_mcp_client() as client:
-                assert client is not None
-
 
 @pytest.mark.integration
 @pytest.mark.mcp
@@ -89,12 +92,31 @@ class TestMCPClientIntegration:
 class TestMCPPromptRetrieval:
     """Integration tests for prompt retrieval through MCP."""
 
-    async def test_multiple_prompt_retrievals(self, mock_mcp_client, monkeypatch):
+    async def test_multiple_prompt_retrievals(self, monkeypatch):
         """Test retrieving multiple prompts in sequence."""
         from mcp_server import mcp_client_utils
         from module4 import research_assistant
+        from mcp import GetPromptResult
+        from mcp.types import TextContent, PromptMessage
 
-        monkeypatch.setattr(mcp_client_utils, "_CURRENT_CLIENT", mock_mcp_client)
+        # Create a mock client with a Mock instead of function
+        mock_client = AsyncMock()
+        mock_get_prompt = AsyncMock()
+
+        async def create_prompt_result(name, arguments=None):
+            return GetPromptResult(
+                messages=[
+                    PromptMessage(
+                        role="user",
+                        content=TextContent(type="text", text=f"Mock prompt {name}")
+                    )
+                ]
+            )
+
+        mock_get_prompt.side_effect = create_prompt_result
+        mock_client.get_prompt = mock_get_prompt
+
+        monkeypatch.setattr(mcp_client_utils, "_CURRENT_CLIENT", mock_client)
 
         # Test multiple sequential calls
         analyst_prompt = await research_assistant.get_analyst_instructions("AI", "", 3)
@@ -106,14 +128,33 @@ class TestMCPPromptRetrieval:
         assert search_prompt is not None
 
         # Verify MCP client was called multiple times
-        assert mock_mcp_client.get_prompt.call_count >= 3
+        assert mock_get_prompt.call_count >= 3
 
-    async def test_prompt_with_arguments(self, mock_mcp_client, monkeypatch):
+    async def test_prompt_with_arguments(self, monkeypatch):
         """Test prompt retrieval with various argument types."""
         from mcp_server import mcp_client_utils
         from module4 import research_assistant
+        from mcp import GetPromptResult
+        from mcp.types import TextContent, PromptMessage
 
-        monkeypatch.setattr(mcp_client_utils, "_CURRENT_CLIENT", mock_mcp_client)
+        # Create a mock client
+        mock_client = AsyncMock()
+        mock_get_prompt = AsyncMock()
+
+        async def create_prompt_result(name, arguments=None):
+            return GetPromptResult(
+                messages=[
+                    PromptMessage(
+                        role="user",
+                        content=TextContent(type="text", text="Mock prompt")
+                    )
+                ]
+            )
+
+        mock_get_prompt.side_effect = create_prompt_result
+        mock_client.get_prompt = mock_get_prompt
+
+        monkeypatch.setattr(mcp_client_utils, "_CURRENT_CLIENT", mock_client)
 
         # Test with string arguments
         result = await research_assistant.get_answer_instructions(
@@ -123,9 +164,8 @@ class TestMCPPromptRetrieval:
 
         assert result is not None
 
-        # Verify arguments were passed correctly
-        call_args = mock_mcp_client.get_prompt.call_args
-        assert call_args is not None
+        # Verify method was called
+        assert mock_get_prompt.called
 
     async def test_prompt_error_handling(self, monkeypatch):
         """Test error handling when MCP prompt retrieval fails."""
